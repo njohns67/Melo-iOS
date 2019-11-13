@@ -13,8 +13,9 @@ import Firebase
 class ViewController: UIViewController, UITextFieldDelegate  {
     
     fileprivate let SpotifyClientID = "ba9b13ccba204ed9a25f1a9bb73ceb8e"
-    fileprivate let SpotifyRedirectURI = "melo://SpotifyAuthentication"
-    
+    fileprivate let SpotifyRedirectURI = "Melo://SpotifyAuthentication"
+    var refreshAPI = "http://melo.us-east-1.elasticbeanstalk.com/api/refresh_token"
+    var tokenAPI = "http://melo.us-east-1.elasticbeanstalk.com/api/token"
     //MARK: Properties
     @IBOutlet weak var logo: UIImageView!
     @IBOutlet weak var lobbyCode: UITextField!
@@ -35,7 +36,7 @@ class ViewController: UIViewController, UITextFieldDelegate  {
                 logo.image = UIImage(cgImage: imageRef!)
             }
         }
-        getAccessToken()
+        //getAccessToken()
     }
     
 //    @IBAction func hitReturn(_ sender: Any) {
@@ -48,6 +49,10 @@ class ViewController: UIViewController, UITextFieldDelegate  {
         //GlobalVars.lobbyCode = lobbyCode.text!
     }
     
+    @IBAction func createLobby(_ sender: Any) {
+        let appDelegate = UIApplication.shared.delegate as! AppDelegate
+        appDelegate.startSession()
+    }
     func getAccessToken(){
         let url = URL(string: "https://accounts.spotify.com/authorize?client_id=" + SpotifyClientID + "&response_type=code&redirect_uri=" + SpotifyRedirectURI + "&scope=user-modify-playback-state%20user-read-currently-playing%20user-read-private")!
         if #available(iOS 10.0, *){

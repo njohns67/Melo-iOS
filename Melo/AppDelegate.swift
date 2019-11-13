@@ -1,54 +1,48 @@
-//
-//  AppDelegate.swift
-//  Melo
-//
-//  Created by Nathan Johnston on 11/8/19.
-//  Copyright © 2019 Nathan Johnston. All rights reserved.
-//
-
 import UIKit
 import Firebase
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
-    // MARK: UISceneSession Lifecycle
 
-      func application(_ application: UIApplication,
-        didFinishLaunchingWithOptions launchOptions:
-        [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        print("Launched")
+    var window: UIWindow?
+    lazy var adminVC: LobbyAdminViewController = {
+        let storyboard = UIStoryboard(name: "Main", bundle: nil)
+        let controller = storyboard.instantiateViewController(withIdentifier: "LobbyAdmin")
+        return controller as! LobbyAdminViewController
+    }()
 
-        if let url = launchOptions?[UIApplication.LaunchOptionsKey.url] as? URL {
-           print(url)
-        }
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         FirebaseApp.configure()
         return true
-      }
-    func application(_ application: UIApplication,
-                     willFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool{
-        if let url = launchOptions?[UIApplication.LaunchOptionsKey.url] as? URL {
-           print(url)
-        }
-        return true
-    }
-    func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
-            // Called when a new scene session is being created.
-            // Use this method to select a configuration to create the new scene with.
-            return UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
     }
 
-    func application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {
-        // Called when the user discards a scene session.
-        // If any sessions were discarded while the application was not running, this will be called shortly after application:didFinishLaunchingWithOptions.
-        // Use this method to release any resources that were specific to the discarded scenes, as they will not return.
-    }
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
-        print("fired")
-        let message = url.host?.removingPercentEncoding
-        print(message)
+        print(url)
+        adminVC.sessionManager.application(app, open: url, options: options)
         return true
     }
     
+    func startSession(){
+        let scope: SPTScope = [.appRemoteControl, .playlistReadPrivate, .userModifyPlaybackState, .userReadPlaybackState]
+        if #available(iOS 11, *) {
+            // Use this on iOS 11 and above to take advantage of SFAuthenticationSession
+            adminVC.sessionManager.initiateSession(with: scope, options: .clientOnly)
+        } else {
+            // Use this on iOS versions < 11 to use SFSafariViewController
+            adminVC.sessionManager.initiateSession(with: scope, options: .clientOnly, presenting: adminVC)
+        }
+        
+    }
 
+    func applicationWillResignActive(_ application: UIApplication) {
+        if (adminVC.appRemote.isConnected) {
+            adminVC.appRemote.disconnect()
+        }
+    }
+
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        if let _ = adminVC.appRemote.connectionParameters.accessToken {
+            adminVC.appRemote.connect()
+        }
+    }
 }
-

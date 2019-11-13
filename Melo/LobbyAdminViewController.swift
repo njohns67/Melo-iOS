@@ -31,10 +31,9 @@ class LobbyAdminViewController: UIViewController, SPTSessionManagerDelegate, SPT
            configuration.tokenRefreshURL = URL(string: refreshAPI)
            return configuration
        }()
-
+    //var sessionManager: SPTSessionManager? = nil
        lazy var sessionManager: SPTSessionManager = {
            let manager = SPTSessionManager(configuration: configuration, delegate: self)
-           manager.delegate = self
            return manager
        }()
 
@@ -54,67 +53,29 @@ class LobbyAdminViewController: UIViewController, SPTSessionManagerDelegate, SPT
     @IBOutlet weak var currentSongLabel: UILabel!
     @IBOutlet weak var progressBar: UIProgressView!
 
+    
     override func viewDidLoad() {
+        print("Ran")
         let random = Int(arc4random_uniform(900000) + 100000)
         lobbyCode = String(random)
+        print("Got lobby code: " + lobbyCode)
         lobbyCodeLabel.text = lobbyCode
         GlobalVars.lobbyCode = lobbyCode
-        var ref: DatabaseReference!
-        ref = Database.database().reference()
-        ref.child(lobbyCode).child("null").setValue("null")        
-        if GlobalVars.accessCode != "" {
-            appRemote.authorizeAndPlayURI("")
-//            DispatchQueue.main.async{[weak self] in
-//                self?.appRemote.connectionParameters.accessToken = "BQDtDOptsxTedsoWc7XvD0dUHTlj9wXwNK5NmvLugyhFeMP3LnM2_iL01UJFhOgwHNuhindFwh7jp2poCT6ajTX3XH1CvSKIlEa5GRDLnMIUT9qWh_kFCt28YymY9_MKUPEypYHiBKH96d492z8rAldpSnzAqPB3P4YdZZ7QMBbKhSDLrcegJC4"
-//                print(self?.appRemote.connectionParameters.accessToken)
-//                self?.appRemote.authorizeAndPlayURI("")
-//                self?.appRemote.connect()
-//            }
-//            DispatchQueue.main.async {[weak self] in
-//                //let url = URL(string: NSString(format:  "https://accounts.spotify.com/api/token?grant_type=authorization_code&code=%@&redirect_uri=%@&client_id=%@&client_secret=%@", GlobalVars.accessCode, self!.SpotifyRedirectURI, self!.SpotifyClientID, self!.SpotifyClientSecret) as String)
-//                let url = URL(string: self!.tokenAPI)
-//                var request = URLRequest(url: url!)
-//                request.httpMethod = "POST"
-//                let body = "code=" + GlobalVars.accessCode
-//                request.httpBody = body.data(using: .utf8)
-//                request.addValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-//                request.addValue("application/json", forHTTPHeaderField: "Accept")
-//                let task = URLSession.shared.dataTask(with: request){data, response, error in
-//                    guard let data = data, error == nil else{
-//                        print(error?.localizedDescription ?? "No data")
-//                        return
-//                    }
-//                    let responseJSON = try? JSONSerialization.jsonObject(with: data, options: [])
-//                    if let responseJSON = responseJSON as? [String: Any] {
-//                        print(responseJSON)
-//                        //self?.appRemote.connectionParameters.accessToken = //responseJSON["access_token"] as! String
-//                        print(responseJSON["access_token"] as! String)
-//                        DispatchQueue.main.async {[weak self] in
-//                            self?.appRemote.authorizeAndPlayURI("")
-//                            //self?.appRemote.connect()
-//                        }
-//                    }
-//                }
-//                task.resume()
-//                //self?.appRemote.connect()
-//            }
-        }
-        else{
-            print("Bad token")
-        }
-        //let scope: SPTScope = [.appRemoteControl]
-//        if #available(iOS 11, *) {
-//            print("ios 11")
-//            // Use this on iOS 11 and above to take advantage of SFAuthenticationSession
-//            //sessionManager.initiateSession(with: scope, options: .clientOnly)
-//            print("Trying to initiate in if")
-//        } else {
-//            print("Not 11")
-//            // Use this on iOS versions < 11 to use SFSafariViewController
-//            //sessionManager.initiateSession(with: scope, options: .clientOnly, presenting: self)
-//        }
+        var dbref: DatabaseReference!
+        dbref = Database.database().reference()
+        dbref.child(lobbyCode).child("null").setValue("null")
+        
+        let ref = Database.database().reference().child(lobbyCode)
+               ref.observe(.childAdded, with: {(snapshot) -> Void in
+                   if(snapshot.key == "currentSong"){
+                       return
+                   }
+                   if(snapshot.value as! String != "null"){
+                    self.appRemote.playerAPI?.enqueueTrackUri(snapshot.value as! String)
+                       ref.child(snapshot.key).removeValue()
+                   }
+               })
     }
-    
     
     func update(playerState: SPTAppRemotePlayerState) {
        if lastPlayerState?.track.uri != playerState.track.uri {
@@ -143,12 +104,14 @@ class LobbyAdminViewController: UIViewController, SPTSessionManagerDelegate, SPT
                 if(playerState.isPaused){
                     isPaused = true
                     lobbyRef.child("currentSong").child("isPaused").setValue("true")
+                    pausePlayButton.setBackgroundImage(UIImage(systemName: "play"), for: .normal)
                     return
                 }
                 else{
                     if(isPaused){
                         isPaused = false
                         lobbyRef.child("currentSong").child("isPaused").setValue("false")
+                        pausePlayButton.setBackgroundImage(UIImage(systemName: "pause"), for: .normal)
                         return
                     }
                 progressBar.setProgress(0, animated: false)
@@ -165,11 +128,11 @@ class LobbyAdminViewController: UIViewController, SPTSessionManagerDelegate, SPT
         currentSongLabel.text = playerState.track.name
         currentArtistLabel.text = playerState.track.artist.name
         if playerState.isPaused {
-            pausePlayButton.setBackgroundImage(UIImage(named: "play"), for: .normal)
+            pausePlayButton.setBackgroundImage(UIImage(systemName: "play"), for: .normal)
             isPaused = true
             lobbyRef.child("currentSong").child("isPaused").setValue("true")
         } else {
-            pausePlayButton.setBackgroundImage(UIImage(named: "pause"), for: .normal)
+            pausePlayButton.setBackgroundImage(UIImage(systemName: "pause"), for: .normal)
             isPaused = false
             lobbyRef.child("currentSong").child("isPaused").setValue("false")
         }
@@ -188,15 +151,29 @@ class LobbyAdminViewController: UIViewController, SPTSessionManagerDelegate, SPT
 
     @IBAction func onTap_pausePlayButton(_ sender: UIButton) {
         print("tapped")
+        let lobbyRef = Database.database().reference().child(lobbyCode)
         if let lastPlayerState = lastPlayerState, lastPlayerState.isPaused {
+            pausePlayButton.setBackgroundImage(UIImage(systemName: "pause"), for: .normal)
+            isPaused = false
+            lobbyRef.child("currentSong").child("isPaused").setValue("false")
             appRemote.playerAPI?.resume(nil)
             print("Resuming")
         } else {
             appRemote.playerAPI?.pause(nil)
+            pausePlayButton.setBackgroundImage(UIImage(systemName: "play"), for: .normal)
+            isPaused = false
+            lobbyRef.child("currentSong").child("isPaused").setValue("true")
             print("Pausing")
         }
     }
-
+    
+    @IBAction func onTap_skipButton(_ sender: Any) {
+        appRemote.playerAPI?.skip(toNext: nil)
+    }
+    
+    @IBAction func onTap_previousButton(_ sender: Any) {
+        appRemote.playerAPI?.skip(toPrevious: nil)
+    }
     func sessionManager(manager: SPTSessionManager, didFailWith error: Error) {
 //        presentAlertController(title: "Authorization Failed", message: error.localizedDescription, buttonTitle: "Bummer")
         print("Bad init")
@@ -212,6 +189,9 @@ class LobbyAdminViewController: UIViewController, SPTSessionManagerDelegate, SPT
         print("Trying to connect")
         appRemote.connectionParameters.accessToken = session.accessToken
         //print(session.accessToken)
+        DispatchQueue.main.async {[weak self] in
+            self?.appRemote.connect()
+        }
         //appRemote.connect()
     }
 
@@ -225,16 +205,7 @@ class LobbyAdminViewController: UIViewController, SPTSessionManagerDelegate, SPT
                 print("Error subscribing to player state:" + error.localizedDescription)
             }
         })
-        let ref = Database.database().reference().child(lobbyCode)
-        ref.observe(.childAdded, with: {(snapshot) -> Void in
-            if(snapshot.key == "currentSong"){
-                return
-            }
-            if(snapshot.value as! String != "null"){
-                appRemote.playerAPI?.enqueueTrackUri(snapshot.value as! String)
-                ref.child(snapshot.key).removeValue()
-            }
-        })
+        print("Lobby code: " + lobbyCode)
         fetchPlayerState()
     }
 

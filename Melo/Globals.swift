@@ -14,3 +14,4 @@ struct GlobalVars {
     static var token = ""
     static var refreshToken = ""
 }
+

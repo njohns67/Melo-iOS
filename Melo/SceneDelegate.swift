@@ -17,24 +17,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Use this method to optionally configure and attach the UIWindow `window` to the provided UIWindowScene `scene`.
         // If using a storyboard, the `window` property will automatically be initialized and attached to the scene.
         // This delegate does not imply the connecting scene or session are new (see `application:configurationForConnectingSceneSession` instead).
-        
         guard let _ = (scene as? UIWindowScene) else { return }
     }
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
-        if let urlContext = URLContexts.first{
-            let url = urlContext.url
-            print(url)
-            if let queryItems = NSURLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems{
-                for item in queryItems{
-                    if item.name == "code"{
-                        if let v = item.value{
-                            GlobalVars.accessCode = v
-                            print(v)
-                        }
-                    }
-                }
-            }
-        }
+        print("Got url")
+        print(URLContexts.first!.url)
+        let appDelegate = UIApplication.shared.delegate as! AppDelegate
+        appDelegate.adminVC.sessionManager.application(UIApplication.shared, open: URLContexts.first!.url, options: [:])
+        self.window?.rootViewController = appDelegate.adminVC
+        self.window?.makeKeyAndVisible()
     }
     func sceneDidDisconnect(_ scene: UIScene) {
         // Called as the scene is being released by the system.
