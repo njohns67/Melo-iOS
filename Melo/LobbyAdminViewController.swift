@@ -17,6 +17,8 @@ class LobbyAdminViewController: UIViewController, SPTSessionManagerDelegate, SPT
     var currentArtist = ""
     var songLength = 0
     var isPaused = false
+    var timer = Timer()
+    var timeInterval: Float = 0.0
     fileprivate let SpotifyClientID = "ba9b13ccba204ed9a25f1a9bb73ceb8e"
     fileprivate let SpotifyRedirectURI = "melo://SpotifyAuthentication"
     fileprivate let SpotifyClientSecret = "327fb0ad3001470db0c94260b74cf120"
@@ -63,42 +65,68 @@ class LobbyAdminViewController: UIViewController, SPTSessionManagerDelegate, SPT
         GlobalVars.lobbyCode = lobbyCode
         var dbref: DatabaseReference!
         dbref = Database.database().reference()
-        dbref.child(lobbyCode).child("null").setValue("null")
+        dbref.child(lobbyCode).child("userAdded").setValue("false")
         
         let ref = Database.database().reference().child(lobbyCode)
-               ref.observe(.childAdded, with: {(snapshot) -> Void in
-                   if(snapshot.key == "currentSong"){
-                       return
-                   }
-                   if(snapshot.value as! String != "null"){
-                    self.appRemote.playerAPI?.enqueueTrackUri(snapshot.value as! String)
-                       ref.child(snapshot.key).removeValue()
-                   }
-               })
+        ref.observe(.childAdded, with: {(snapshot) -> Void in
+            if(snapshot.key == "currentSong" || snapshot.key == "userAdded"){
+               return
+           }
+           if(snapshot.value as! String != "null"){
+            self.appRemote.playerAPI?.enqueueTrackUri(snapshot.value as! String)
+               ref.child(snapshot.key).removeValue()
+           }
+       })
+        ref.observe(.childChanged, with: {(snapshot) -> Void in
+            if(snapshot.key == "userAdded"){
+                if(snapshot.value as! String == "true"){
+                    self.appRemote.playerAPI?.getPlayerState({(playerState, error) in
+                        if let error = error {
+                            print("Error getting player state:" + error.localizedDescription)
+                        } else if let playerState = playerState as? SPTAppRemotePlayerState {
+                            self.setProgress(_progress: playerState.playbackPosition, _songLength: Int(playerState.track.duration))
+                            Database.database().reference().child("userAdded").setValue("false")
+                        }
+                    })
+                }
+            }
+            })
     }
     
+    func setProgress(_progress: Int, _songLength: Int){
+        print("Called set progress")
+        self.progress = Float(Float(_progress)/Float(_songLength))
+        print(String(self.progress))
+        self.songLength = _songLength
+        self.timeInterval = Float(Float(self.songLength)/100000)
+        self.timer.invalidate()
+        self.timer = Timer.scheduledTimer(timeInterval: TimeInterval(self.timeInterval), target: self, selector: #selector(self.timerFunc), userInfo: nil, repeats: true)
+        Database.database().reference().child(lobbyCode).child("currentSong").child("position").setValue(String(_progress/1000))
+    }
+
     func update(playerState: SPTAppRemotePlayerState) {
        if lastPlayerState?.track.uri != playerState.track.uri {
             //fetchArtwork(for: playerState.track)
        }
         print("Updating")
         lastPlayerState = playerState
-        print(playerState.track.name)
         let track = playerState.track
         let lobbyRef = Database.database().reference().child(lobbyCode)
         if(playerState.track.name != ""){
+            print(track.name)
+            currentArtist = track.artist.name
             currentSongLabel.text = track.name
             currentArtistLabel.text = track.artist.name
-            progressBar.setProgress(Float(songLength/1000), animated: false)
-            songLength = Int(track.duration)
+            self.setProgress(_progress: playerState.playbackPosition, _songLength: Int(playerState.track.duration))
             if(currentSong != track.name){
+                print("not equal")
                 currentSong = track.name
-                progressBar.setProgress(0, animated: false)
-                progress = 0
+                self.setProgress(_progress: playerState.playbackPosition, _songLength: Int(playerState.track.duration))
                 let ref = lobbyRef.child("currentSong")
                 ref.child("title").setValue(track.name)
                 ref.child("artist").setValue(track.artist.name)
                 ref.child("isPaused").setValue("false")
+                ref.child("duration").setValue(String(track.duration))
             }
             else{
                 if(playerState.isPaused){
@@ -114,19 +142,22 @@ class LobbyAdminViewController: UIViewController, SPTSessionManagerDelegate, SPT
                         pausePlayButton.setBackgroundImage(UIImage(systemName: "pause"), for: .normal)
                         return
                     }
-                progressBar.setProgress(0, animated: false)
-                progress = 0
-                lobbyRef.child("currentSong").child("position").setValue("0")
+                    isPaused = false
+                    self.setProgress(_progress: playerState.playbackPosition, _songLength: Int(playerState.track.duration))
+
+                    lobbyRef.child("currentSong").child("position").setValue("0")
                 }
             }
         }
         else{
-            progressBar.setProgress(0, animated: false)
-            progress = 0
+            self.setProgress(_progress: playerState.playbackPosition, _songLength: Int(playerState.track.duration))
+
             lobbyRef.child("currentSong").child("position").setValue("0")
         }
         currentSongLabel.text = playerState.track.name
         currentArtistLabel.text = playerState.track.artist.name
+        currentSong = playerState.track.name
+        currentArtist = playerState.track.artist.name
         if playerState.isPaused {
             pausePlayButton.setBackgroundImage(UIImage(systemName: "play"), for: .normal)
             isPaused = true
@@ -137,7 +168,13 @@ class LobbyAdminViewController: UIViewController, SPTSessionManagerDelegate, SPT
             lobbyRef.child("currentSong").child("isPaused").setValue("false")
         }
     }
-
+    
+    @objc func timerFunc(){
+        if(!self.isPaused){
+            progressBar.setProgress(progress, animated: true)
+            progress += 0.01
+        }
+    }
     func fetchPlayerState() {
         print("Getting player state")
         appRemote.playerAPI?.getPlayerState({ [weak self] (playerState, error) in
@@ -151,19 +188,12 @@ class LobbyAdminViewController: UIViewController, SPTSessionManagerDelegate, SPT
 
     @IBAction func onTap_pausePlayButton(_ sender: UIButton) {
         print("tapped")
-        let lobbyRef = Database.database().reference().child(lobbyCode)
         if let lastPlayerState = lastPlayerState, lastPlayerState.isPaused {
             pausePlayButton.setBackgroundImage(UIImage(systemName: "pause"), for: .normal)
-            isPaused = false
-            lobbyRef.child("currentSong").child("isPaused").setValue("false")
             appRemote.playerAPI?.resume(nil)
-            print("Resuming")
         } else {
             appRemote.playerAPI?.pause(nil)
             pausePlayButton.setBackgroundImage(UIImage(systemName: "play"), for: .normal)
-            isPaused = false
-            lobbyRef.child("currentSong").child("isPaused").setValue("true")
-            print("Pausing")
         }
     }
     
@@ -175,7 +205,7 @@ class LobbyAdminViewController: UIViewController, SPTSessionManagerDelegate, SPT
         appRemote.playerAPI?.skip(toPrevious: nil)
     }
     func sessionManager(manager: SPTSessionManager, didFailWith error: Error) {
-//        presentAlertController(title: "Authorization Failed", message: error.localizedDescription, buttonTitle: "Bummer")
+        //presentAlertController(title: "Authorization Failed", message: "You must have Spotify installed to make a lobby", buttonTitle: "Go Back")
         print("Bad init")
         print(error.localizedDescription)
     }
@@ -192,7 +222,6 @@ class LobbyAdminViewController: UIViewController, SPTSessionManagerDelegate, SPT
         DispatchQueue.main.async {[weak self] in
             self?.appRemote.connect()
         }
-        //appRemote.connect()
     }
 
     // MARK: - SPTAppRemoteDelegate
@@ -245,7 +274,6 @@ class LobbyAdminViewController: UIViewController, SPTSessionManagerDelegate, SPT
     
     @IBAction func enter(_ sender: Any) {
         searchSong.resignFirstResponder()
-
     }
     
     override func shouldPerformSegue(withIdentifier identifier: String?, sender: Any?) -> Bool{
@@ -263,10 +291,11 @@ class LobbyAdminViewController: UIViewController, SPTSessionManagerDelegate, SPT
           return true
       }
       
-      override func prepare(for segue: UIStoryboardSegue, sender: Any?){
-          let vc = segue.destination as? SongTableViewController
-          vc?.query = searchSong.text!
-      }
+    override func prepare(for segue: UIStoryboardSegue, sender: Any?){
+        let vc = segue.destination as? SongTableViewController
+        vc?.query = searchSong.text!
+        searchSong.text?.removeAll()
+    }
 
     /*
 //    // MARK: - Navigation

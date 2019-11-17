@@ -39,10 +39,10 @@ class ViewController: UIViewController, UITextFieldDelegate  {
         //getAccessToken()
     }
     
-//    @IBAction func hitReturn(_ sender: Any) {
-//        lobbyCode.resignFirstResponder()
-//        enter.sendActions(for: .touchUpInside)
-//    }
+    @IBAction func hitReturn(_ sender: Any) {
+        lobbyCode.resignFirstResponder()
+        enter.sendActions(for: .touchUpInside)
+    }
     
     @IBAction func enter(_ sender: UIButton) {
         lobbyCode.resignFirstResponder()
@@ -51,7 +51,18 @@ class ViewController: UIViewController, UITextFieldDelegate  {
     
     @IBAction func createLobby(_ sender: Any) {
         let appDelegate = UIApplication.shared.delegate as! AppDelegate
-        appDelegate.startSession()
+        if let appURL = URL(string: "Spotify://") {
+            let canOpen = UIApplication.shared.canOpenURL(appURL as URL)
+            if canOpen{
+                appDelegate.startSession()
+            }
+            else{
+                let controller = UIAlertController(title: "Error", message: "You must have Spotify installed to create a lobby", preferredStyle: .alert)
+                let action = UIAlertAction(title: "Back", style: .default, handler: nil)
+                controller.addAction(action)
+                present(controller, animated: true)
+            }
+        }
     }
     func getAccessToken(){
         let url = URL(string: "https://accounts.spotify.com/authorize?client_id=" + SpotifyClientID + "&response_type=code&redirect_uri=" + SpotifyRedirectURI + "&scope=user-modify-playback-state%20user-read-currently-playing%20user-read-private")!

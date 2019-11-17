@@ -16,6 +16,8 @@ class LobbyUserViewController: UIViewController, SPTSessionManagerDelegate, SPTA
     var currentArtist = ""
     var songLength = 0
     var isPaused = false
+    var timer = Timer()
+    var timeInterval = 0.0
     fileprivate let SpotifyClientID = "ba9b13ccba204ed9a25f1a9bb73ceb8e"
     fileprivate let SpotifyRedirectURI = URL(string: "Melo://SpotifyAuthentication")!
     fileprivate var lastPlayerState: SPTAppRemotePlayerState?
@@ -65,13 +67,21 @@ class LobbyUserViewController: UIViewController, SPTSessionManagerDelegate, SPTA
             print("Not 11")
             sessionManager.initiateSession(with: scope, options: .clientOnly, presenting: self)
         }
+        Database.database().reference().child(lobbyCode).child("userAdded").setValue("true")
         let ref = Database.database().reference().child(lobbyCode).child("currentSong")
         ref.observeSingleEvent(of: .value, with: { (snapshot) in
             self.currentSong = snapshot.childSnapshot(forPath: "title").value as! String
             self.currentArtist = snapshot.childSnapshot(forPath: "artist").value as! String
             self.songLength = Int(snapshot.childSnapshot(forPath: "duration").value as! String)!
+            self.timeInterval = Double(self.songLength)/100000
+            let _progress = snapshot.childSnapshot(forPath: "position").value as! String
+            self.progress = Float(Float(_progress)!/Float((self.songLength)/1000))
+            print(String(self.progress))
             self.currentSongLabel.text = self.currentSong
             self.currentArtistLabel.text = self.currentArtist
+            self.progressBar.setProgress(self.progress, animated: false)
+            self.timer = Timer.scheduledTimer(timeInterval: self.timeInterval, target: self, selector: #selector(self.timerFunc), userInfo: nil, repeats: true)
+            print("Set progress2 ", String(self.progress))
             
         })
         ref.observe(.childChanged, with: {(snapshot) -> Void in
@@ -80,18 +90,42 @@ class LobbyUserViewController: UIViewController, SPTSessionManagerDelegate, SPTA
                     self.currentSong = snapshot.value as! String
                     print(self.currentSong)
                     self.currentSongLabel.text = self.currentSong
+                    self.progressBar.setProgress(0, animated: false)
                 case "artist":
                     self.currentArtist = snapshot.value as! String
                     self.currentArtistLabel.text = self.currentArtist
                 case "duration":
                     self.songLength = Int(snapshot.value as! String)!
-
+                    self.timeInterval = Double(self.songLength)/100000
+                    self.timer.invalidate()
+                    self.timer = Timer.scheduledTimer(timeInterval: self.timeInterval, target: self, selector: #selector(self.timerFunc), userInfo: nil, repeats: true)
+                case "position":
+                    let value = snapshot.value as! String
+                    self.progress = Float(Float(value)!/Float((self.songLength)/1000))
+                    print("Set progress " + String(self.progress))
+                    self.timer.invalidate()
+                    self.timer = Timer.scheduledTimer(timeInterval: self.timeInterval, target: self, selector: #selector(self.timerFunc), userInfo: nil, repeats: true)
+                case "isPaused":
+                    let value = snapshot.value as! String
+                    if(value == "true"){
+                        self.isPaused = true
+                    }
+                    else{
+                        self.isPaused  = false
+                    }
                 default:
                     break
                 }
         })
-                
+        
         // Do any additional setup after loading the view.
+    }
+    
+    @objc func timerFunc(){
+        if(!self.isPaused){
+            progressBar.setProgress(progress, animated: true)
+            progress += 0.01
+        }
     }
     
     func appRemoteDidEstablishConnection(_ appRemote: SPTAppRemote) {
@@ -162,7 +196,6 @@ class LobbyUserViewController: UIViewController, SPTSessionManagerDelegate, SPTA
         searchSong.resignFirstResponder()
     }
     override func shouldPerformSegue(withIdentifier identifier: String?, sender: Any?) -> Bool{
-        print("Me first")
         if(identifier == "toSongTableViewController"){
             if(searchSong?.text?.isEmpty ?? true) {
                 let banner = GrowingNotificationBanner(title: "Error:", subtitle: "You must enter a song to search for", style: .danger)
@@ -178,9 +211,9 @@ class LobbyUserViewController: UIViewController, SPTSessionManagerDelegate, SPTA
     }
     
     override func prepare(for segue: UIStoryboardSegue, sender: Any?){
-        print("No me")
         let vc = segue.destination as? SongTableViewController
         vc?.query = searchSong.text!
+        searchSong.text?.removeAll()
     }
 
     /*

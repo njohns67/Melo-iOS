@@ -7,16 +7,22 @@
 //
 
 import UIKit
+import NotificationBannerSwift
 
 class SongTableViewController: UITableViewController {
 
+    @IBOutlet weak var searchButton: UIButton!
+    @IBOutlet weak var searchBar: UITextField!
+
     var songs = [Song]()
     var query = ""
+    var token = ""
     override func viewDidLoad() {
         super.viewDidLoad()
-        loadSongs()
         self.tableView.delegate = self
         self.tableView.dataSource = self
+        getAuth()
+        searchBar.text = query
         // Uncomment the following line to preserve selection between presentations
         // self.clearsSelectionOnViewWillAppear = false
 
@@ -24,14 +30,27 @@ class SongTableViewController: UITableViewController {
         // self.navigationItem.rightBarButtonItem = self.editButtonItem
     }
     
-    private func loadSongs(){
-        let song1 = Song(title: "All Star", artist: "Smash Mouth", URI: "spotify:track:3cfOd4CMv2snFaKAnMdnvK")
-        let song2 = Song(title: "We Are The Champions", artist: "Queen", URI: "spotify://song.uri")
-        let song3 = Song(title: "Sweet Victory", artist: "David Glenn Eisley", URI: "spotify://song.uri")
-        
-        songs += [song1, song2, song3]
+    @IBAction func onTap_searchButton(_ sender: Any) {
+        searchBar.resignFirstResponder()
+        if(searchBar?.text?.isEmpty ?? true) {
+            let banner = GrowingNotificationBanner(title: "Error:", subtitle: "You must enter a song to search for", style: .danger)
+            banner.duration = 2.0
+            banner.show(bannerPosition: .bottom)
+        }
+        else{
+            query = (searchBar?.text)!
+            getAuth()
+        }
     }
-
+    @IBAction func hitReturn(_ sender: Any) {
+        searchBar.resignFirstResponder()
+        if(searchBar?.text?.isEmpty ?? true) {
+            return
+        }
+        else{
+            searchButton.sendActions(for: .touchUpInside)
+        }
+    }
     // MARK: - Table view data source
 
     override func numberOfSections(in tableView: UITableView) -> Int {
@@ -61,33 +80,102 @@ class SongTableViewController: UITableViewController {
         let song = songs[indexPath.row]
         cell.titleLabel.text = song.title
         cell.artistLabel.text = song.artist
+        cell.thumbnail.contentMode = .scaleAspectFit
+        let url = URL(string: song.imageURL)
+        let data = try? Data(contentsOf: url!)
+        cell.thumbnail.image = UIImage(data: data!)
+//        DispatchQueue.global().async {
+//            let data = try? Data(contentsOf: url!) //make sure your image in this url does exist, otherwise unwrap in a if let check / try-catch
+//            DispatchQueue.main.async {
+//                cell.thumbnail.image = UIImage(data: data!)
+//            }
+//        }
         cell.addToQueueButton.tag = indexPath.row
         cell.songs += songs
         return cell
     }
     
-   /* func searchForSong(){
+   func searchForSong(){
         if query == ""{
             return
         }
-        let url = "https://api.spotify.com/v1/search?q=" + query.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed)! + "&type=track"
-        var request = NSMutableURLRequest()
-        request.URL = NSURL(string: url)
-        request.httpMethod = "GET"
-        //request.addValue("Bearer " + token, forHTTPHeaderField: "Authorization")
-        request.addValue("application/json", forHTTPHeaderField: "Accept")
-        NSURLConnection.sendAsynchronousRequest(request as URLRequest, queue: OperationQueue(), completionHandler:{ (response:URLResponse!, data: NSData!, error: NSError!) -> Void in
-            var error: AutoreleasingUnsafeMutablePointer<NSError?> = nil
-            let jsonResult: NSDictionary! = NSJSONSerialization.JSONObjectWithData(data, options:NSJSONReadingOptions.MutableContainers, error: error) as? NSDictionary
-            if jsonResult != nil{
-                print(jsonResult)
-            }
-            else{
-                print(error as! String)
-            }
-        })
-    }*/
+    self.songs.removeAll()
+    let url = "https://api.spotify.com/v1/search?q=" + query.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed)! + "&type=track"
+    let session = URLSession.shared
+    var request = URLRequest(url: URL(string: url)!)
+    request.httpMethod = "GET"
+    request.addValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+    let task = session.dataTask(with: request as URLRequest, completionHandler: { data, response, error in
+        guard error == nil else {
+            print(error?.localizedDescription as Any)
+            return
+        }
+        guard let data = data else {
+            print(error?.localizedDescription as Any)
+            return
+        }
+        do {
+            if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+                let tracks = json["tracks"] as? [String: Any]
+                let items = tracks?["items"] as? [Any]
+                for case let item as [String: Any] in items!{
+                    let artists = item["artists"] as? [Any]
+                    let artistItem = artists?[0] as? [String: Any]
+                    let artist = artistItem?["name"] as? String
+                    let title = item["name"] as? String
+                    let uri = item["uri"] as? String
+                    let album = item["album"] as? [String: Any]
+                    let images = album?["images"] as? [Any]
+                    let image = images?[0] as? [String: Any]
+                    let imageURL = image?["url"] as? String
+                    let song = Song(title: title!, artist: artist!, URI: uri!, imageURL: imageURL!)
+                    self.songs.append(song)
+                    print(String(format: "%@, %@, %@", title!, artist!, uri!))
+                }
+                DispatchQueue.main.async {[weak self] in
+                    self?.tableView.reloadData()
+                    self?.removeSpinner()
+                }
+                }
+        } catch let error {
+            print(error.localizedDescription)
+                              
+        }
+    })
+    task.resume()
+    }
     
+    func getAuth(){
+        self.showSpinner(onView: self.view)
+        let url = "https://accounts.spotify.com/api/token?grant_type=client_credentials"
+        let session = URLSession.shared
+        var request = URLRequest(url: URL(string: url)!)
+        request.httpMethod = "POST"
+        request.addValue("Basic YmE5YjEzY2NiYTIwNGVkOWEyNWYxYTliYjczY2ViOGU6MzI3ZmIwYWQzMDAxNDcwZGIwYzk0MjYwYjc0Y2YxMjA=", forHTTPHeaderField: "Authorization")
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        request.addValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            let task = session.dataTask(with: request as URLRequest, completionHandler: { data, response, error in
+               guard error == nil else {
+                print(error?.localizedDescription as Any)
+                   return
+               }
+               guard let data = data else {
+                print(error?.localizedDescription as Any)
+                   return
+               }
+                do {
+                    if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+                        print(json)
+                        self.token = (json["access_token"] as? String)!
+                        self.searchForSong()
+                        }
+                } catch let error {
+                    print(error.localizedDescription)
+                                      
+                }
+            })
+            task.resume()
+    }
     
 
     /*

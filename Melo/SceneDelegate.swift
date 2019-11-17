@@ -24,8 +24,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         print(URLContexts.first!.url)
         let appDelegate = UIApplication.shared.delegate as! AppDelegate
         appDelegate.adminVC.sessionManager.application(UIApplication.shared, open: URLContexts.first!.url, options: [:])
-        self.window?.rootViewController = appDelegate.adminVC
-        self.window?.makeKeyAndVisible()
+        self.window?.rootViewController?.show(appDelegate.adminVC, sender: self.window?.rootViewController)
+        //self.window?.makeKeyAndVisible()
     }
     func sceneDidDisconnect(_ scene: UIScene) {
         // Called as the scene is being released by the system.
